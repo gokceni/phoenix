@@ -251,7 +251,7 @@ public class IndexTool extends Configured implements Tool {
             if (isPartialBuild) {
                 return configureJobForPartialBuild(schemaName, dataTable);
             } else {
-                return configureJobForAysncIndex(schemaName, indexTable, dataTable, useDirectApi, useSnapshot);
+                return configureJobForAsyncIndex(schemaName, indexTable, dataTable, useDirectApi, useSnapshot);
             }
         }
         
@@ -364,7 +364,7 @@ public class IndexTool extends Configured implements Tool {
             
         }
 
-        private Job configureJobForAysncIndex(String schemaName, String indexTable, String dataTable, boolean useDirectApi, boolean useSnapshot)
+        private Job configureJobForAsyncIndex(String schemaName, String indexTable, String dataTable, boolean useDirectApi, boolean useSnapshot)
                 throws Exception {
             final String qDataTable = SchemaUtil.getQualifiedTableName(schemaName, dataTable);
             final String qIndexTable;
@@ -374,9 +374,9 @@ public class IndexTool extends Configured implements Tool {
                 qIndexTable = indexTable;
             }
             final PTable pdataTable = PhoenixRuntime.getTable(connection, qDataTable);
-            
+
             final PTable pindexTable = PhoenixRuntime.getTable(connection, qIndexTable);
-            
+
             long maxTimeRange = pindexTable.getTimeStamp() + 1;
             // this is set to ensure index tables remains consistent post population.
 
@@ -387,21 +387,21 @@ public class IndexTool extends Configured implements Tool {
             }
             configuration.set(PhoenixConfigurationUtil.CURRENT_SCN_VALUE,
                 Long.toString(maxTimeRange));
-            
+
             // check if the index type is LOCAL, if so, derive and set the physicalIndexName that is
             // computed from the qDataTable name.
             String physicalIndexTable = pindexTable.getPhysicalName().getString();
-            
+
 
             final PhoenixConnection pConnection = connection.unwrap(PhoenixConnection.class);
             final PostIndexDDLCompiler ddlCompiler =
-                    new PostIndexDDLCompiler(pConnection, new TableRef(pdataTable));
+                new PostIndexDDLCompiler(pConnection, new TableRef(pdataTable));
             ddlCompiler.compile(pindexTable);
 
             final List<String> indexColumns = ddlCompiler.getIndexColumnNames();
             final String selectQuery = ddlCompiler.getSelectQuery();
             final String upsertQuery =
-                    QueryUtil.constructUpsertStatement(qIndexTable, indexColumns, Hint.NO_INDEX);
+                QueryUtil.constructUpsertStatement(qIndexTable, indexColumns, Hint.NO_INDEX);
 
             configuration.set(PhoenixConfigurationUtil.UPSERT_STATEMENT, upsertQuery);
             PhoenixConfigurationUtil.setPhysicalTableName(configuration, physicalIndexTable);
@@ -409,16 +409,18 @@ public class IndexTool extends Configured implements Tool {
             PhoenixConfigurationUtil.setUpsertColumnNames(configuration,
                 indexColumns.toArray(new String[indexColumns.size()]));
             final List<ColumnInfo> columnMetadataList =
-                    PhoenixRuntime.generateColumnInfo(connection, qIndexTable, indexColumns);
+                PhoenixRuntime.generateColumnInfo(connection, qIndexTable, indexColumns);
             ColumnInfoToStringEncoderDecoder.encode(configuration, columnMetadataList);
-            fs = outputPath.getFileSystem(configuration);
-            fs.delete(outputPath, true);
- 
+
             final String jobName = String.format(INDEX_JOB_NAME_TEMPLATE, schemaName, dataTable, indexTable);
             final Job job = Job.getInstance(configuration, jobName);
             job.setJarByClass(IndexTool.class);
             job.setMapOutputKeyClass(ImmutableBytesWritable.class);
-            FileOutputFormat.setOutputPath(job, outputPath);
+            if (outputPath != null) {
+                fs = outputPath.getFileSystem(configuration);
+                fs.delete(outputPath, true);
+                FileOutputFormat.setOutputPath(job, outputPath);
+            }
 
             if (!useSnapshot) {
                 PhoenixMapReduceUtil.setInput(job, PhoenixIndexDBWritable.class, qDataTable,
@@ -451,7 +453,6 @@ public class IndexTool extends Configured implements Tool {
                 return configureSubmittableJobUsingDirectApi(job, false);
             } else {
                 return configureRunnableJobUsingBulkLoad(job, outputPath);
-                
             }
             
         }
