@@ -20,20 +20,13 @@ package org.apache.phoenix.end2end;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.hbase.client.Result;
-import org.apache.hadoop.hbase.client.ResultScanner;
-import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.client.Table;
-import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.phoenix.jdbc.PhoenixConnection;
 import org.apache.phoenix.mapreduce.index.IndexTool;
 import org.apache.phoenix.query.ConnectionQueryServices;
-import org.apache.phoenix.query.QueryConstants;
 import org.apache.phoenix.query.QueryServices;
 import org.apache.phoenix.query.QueryServicesOptions;
-import org.apache.phoenix.schema.PColumn;
 import org.apache.phoenix.schema.PTable;
-import org.apache.phoenix.schema.PTableKey;
 import org.apache.phoenix.util.PhoenixRuntime;
 import org.apache.phoenix.util.PropertiesUtil;
 import org.apache.phoenix.util.ReadOnlyProps;
@@ -56,8 +49,6 @@ import java.util.UUID;
 
 import static org.apache.phoenix.util.TestUtil.TEST_PROPERTIES;
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
 
 public class IndexToolForDeleteBeforeRebuildIT extends BaseUniqueNamesOwnClusterIT {
     private Connection conn;
@@ -78,7 +69,6 @@ public class IndexToolForDeleteBeforeRebuildIT extends BaseUniqueNamesOwnCluster
     private static final String
             INDEX_LOCAL_DDL = "CREATE LOCAL INDEX %s ON %s (ZIP) INCLUDE (NAME)";
     private static final String UPSERT_SQL = "UPSERT INTO %s VALUES(?,?,?,?)";
-
 
     @BeforeClass
     public static void setup() throws Exception {
