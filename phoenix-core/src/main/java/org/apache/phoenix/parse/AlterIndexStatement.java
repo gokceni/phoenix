@@ -28,19 +28,21 @@ public class AlterIndexStatement extends SingleTableStatement {
     private final boolean ifExists;
     private final PIndexState indexState;
     private boolean async;
+    private boolean isAll;
     private ListMultimap<String,Pair<String,Object>> props;
     private static final PTableType tableType=PTableType.INDEX;
 
-    public AlterIndexStatement(NamedTableNode indexTableNode, String dataTableName, boolean ifExists, PIndexState indexState, boolean async) {
-        this(indexTableNode,dataTableName,ifExists,indexState,async,null);
+    public AlterIndexStatement(NamedTableNode indexTableNode, String dataTableName, boolean ifExists, PIndexState indexState, boolean isAll, boolean async) {
+        this(indexTableNode,dataTableName,ifExists,indexState, isAll, async,null);
     }
 
-    public AlterIndexStatement(NamedTableNode indexTableNode, String dataTableName, boolean ifExists, PIndexState indexState, boolean async, ListMultimap<String,Pair<String,Object>> props) {
+    public AlterIndexStatement(NamedTableNode indexTableNode, String dataTableName, boolean ifExists, PIndexState indexState, boolean isAll, boolean async, ListMultimap<String,Pair<String,Object>> props) {
         super(indexTableNode,0);
         this.dataTableName = dataTableName;
         this.ifExists = ifExists;
         this.indexState = indexState;
         this.async = async;
+        this.isAll = isAll;
         this.props= props==null ? ImmutableListMultimap.<String,Pair<String,Object>>of() : props;
     }
 
@@ -63,6 +65,10 @@ public class AlterIndexStatement extends SingleTableStatement {
 
     public boolean isAsync() {
         return async;
+    }
+
+    public boolean isAll() {
+        return isAll;
     }
 
     public ListMultimap<String,Pair<String,Object>> getProps() { return props; }
