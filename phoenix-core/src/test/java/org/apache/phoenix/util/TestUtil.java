@@ -934,7 +934,30 @@ public class TestUtil {
     		this.success = success;
     	}
     }
-    
+
+    public static void waitForIndexState(Connection conn, String fullIndexName, PIndexState expectedIndexState) throws InterruptedException, SQLException {
+        int maxTries = 60, nTries = 0;
+        do {
+            String schema = SchemaUtil.getSchemaNameFromFullName(fullIndexName);
+            String index = SchemaUtil.getTableNameFromFullName(fullIndexName);
+            Thread.sleep(1000); // sleep 1 sec
+            String query = "SELECT " + PhoenixDatabaseMetaData.INDEX_STATE + " FROM " +
+                    PhoenixDatabaseMetaData.SYSTEM_CATALOG_NAME + " WHERE (" + PhoenixDatabaseMetaData.TABLE_SCHEM + "," + PhoenixDatabaseMetaData.TABLE_NAME
+                    + ") = (" + "'" + schema + "','" + index + "') "
+                    + "AND " + PhoenixDatabaseMetaData.COLUMN_FAMILY + " IS NULL AND " + PhoenixDatabaseMetaData.COLUMN_NAME + " IS NULL";
+            ResultSet rs = conn.createStatement().executeQuery(query);
+            PIndexState actualIndexState = null;
+            if (rs.next()) {
+                actualIndexState = PIndexState.fromSerializedValue(rs.getString(1));
+                boolean matchesExpected = (actualIndexState == expectedIndexState);
+                if (matchesExpected) {
+                    return;
+                }
+            }
+        } while (++nTries < maxTries);
+        fail("Ran out of time waiting for index state to become " + expectedIndexState);
+    }
+
     public static void waitForIndexState(Connection conn, String fullIndexName, PIndexState expectedIndexState, Long expectedIndexDisableTimestamp) throws InterruptedException, SQLException {
         int maxTries = 60, nTries = 0;
         do {
