@@ -55,6 +55,7 @@ import static org.apache.phoenix.jdbc.PhoenixDatabaseMetaData.MULTI_TENANT_BYTES
 import static org.apache.phoenix.jdbc.PhoenixDatabaseMetaData.NULLABLE_BYTES;
 import static org.apache.phoenix.jdbc.PhoenixDatabaseMetaData.NUM_ARGS_BYTES;
 import static org.apache.phoenix.jdbc.PhoenixDatabaseMetaData.ORDINAL_POSITION_BYTES;
+import static org.apache.phoenix.jdbc.PhoenixDatabaseMetaData.PHYSICAL_TABLE_NAME_BYTES;
 import static org.apache.phoenix.jdbc.PhoenixDatabaseMetaData.PK_NAME_BYTES;
 import static org.apache.phoenix.jdbc.PhoenixDatabaseMetaData.RETURN_TYPE_BYTES;
 import static org.apache.phoenix.jdbc.PhoenixDatabaseMetaData.SALT_BUCKETS_BYTES;
@@ -81,6 +82,7 @@ import static org.apache.phoenix.jdbc.PhoenixDatabaseMetaData.VIEW_TYPE_BYTES;
 import static org.apache.phoenix.query.QueryConstants.VIEW_MODIFIED_PROPERTY_TAG_TYPE;
 import static org.apache.phoenix.schema.PTableType.INDEX;
 import static org.apache.phoenix.util.PhoenixRuntime.TENANT_ID_ATTRIB;
+import static org.apache.phoenix.util.PhoenixRuntime.getTableNoCache;
 import static org.apache.phoenix.util.SchemaUtil.getVarCharLength;
 import static org.apache.phoenix.util.SchemaUtil.getVarChars;
 import static org.apache.phoenix.util.ViewUtil.findAllDescendantViews;
@@ -321,6 +323,7 @@ TABLE_FAMILY_BYTES, TABLE_SEQ_NUM_BYTES);
     private static final Cell ROW_KEY_ORDER_OPTIMIZABLE_KV = createFirstOnRow(ByteUtil.EMPTY_BYTE_ARRAY, TABLE_FAMILY_BYTES, ROW_KEY_ORDER_OPTIMIZABLE_BYTES);
     private static final Cell TRANSACTIONAL_KV = createFirstOnRow(ByteUtil.EMPTY_BYTE_ARRAY, TABLE_FAMILY_BYTES, TRANSACTIONAL_BYTES);
     private static final Cell TRANSACTION_PROVIDER_KV = createFirstOnRow(ByteUtil.EMPTY_BYTE_ARRAY, TABLE_FAMILY_BYTES, TRANSACTION_PROVIDER_BYTES);
+    private static final Cell PHYSICAL_TABLE_NAME_KV = createFirstOnRow(ByteUtil.EMPTY_BYTE_ARRAY, TABLE_FAMILY_BYTES, PHYSICAL_TABLE_NAME_BYTES);
     private static final Cell UPDATE_CACHE_FREQUENCY_KV = createFirstOnRow(ByteUtil.EMPTY_BYTE_ARRAY, TABLE_FAMILY_BYTES, UPDATE_CACHE_FREQUENCY_BYTES);
     private static final Cell IS_NAMESPACE_MAPPED_KV = createFirstOnRow(ByteUtil.EMPTY_BYTE_ARRAY,
             TABLE_FAMILY_BYTES, IS_NAMESPACE_MAPPED_BYTES);
@@ -361,6 +364,7 @@ TABLE_FAMILY_BYTES, TABLE_SEQ_NUM_BYTES);
             ROW_KEY_ORDER_OPTIMIZABLE_KV,
             TRANSACTIONAL_KV,
             TRANSACTION_PROVIDER_KV,
+            PHYSICAL_TABLE_NAME_KV,
             UPDATE_CACHE_FREQUENCY_KV,
             IS_NAMESPACE_MAPPED_KV,
             AUTO_PARTITION_SEQ_KV,
@@ -407,6 +411,7 @@ TABLE_FAMILY_BYTES, TABLE_SEQ_NUM_BYTES);
     private static final int STORAGE_SCHEME_INDEX = TABLE_KV_COLUMNS.indexOf(STORAGE_SCHEME_KV);
     private static final int QUALIFIER_ENCODING_SCHEME_INDEX = TABLE_KV_COLUMNS.indexOf(ENCODING_SCHEME_KV);
     private static final int USE_STATS_FOR_PARALLELIZATION_INDEX = TABLE_KV_COLUMNS.indexOf(USE_STATS_FOR_PARALLELIZATION_KV);
+    private static final int PHYSICAL_TABLE_NAME_INDEX = TABLE_KV_COLUMNS.indexOf(PHYSICAL_TABLE_NAME_KV);
     private static final int PHOENIX_TTL_INDEX = TABLE_KV_COLUMNS.indexOf(PHOENIX_TTL_KV);
     private static final int PHOENIX_TTL_HWM_INDEX = TABLE_KV_COLUMNS.indexOf(PHOENIX_TTL_HWM_KV);
     private static final int LAST_DDL_TIMESTAMP_INDEX =
@@ -958,6 +963,17 @@ TABLE_FAMILY_BYTES, TABLE_SEQ_NUM_BYTES);
         arguments.add(arg);
     }
 
+    private PTable getTable(byte[] tenantId, byte[] schemaName, byte[] tableName, long clientTimeStamp, int clientVersion)
+            throws IOException, SQLException {
+        byte[] tableKey = SchemaUtil.getTableKey(tenantId, schemaName, tableName);
+        ImmutableBytesPtr cacheKey = new ImmutableBytesPtr(tableKey);
+        // Get as of latest timestamp so we can detect if we have a newer table that already
+        // exists without making an additional query
+        PTable table = loadTable(env, tableKey, cacheKey, clientTimeStamp, HConstants.LATEST_TIMESTAMP,
+                clientVersion);
+        return table;
+    }
+
     private PTable getTable(RegionScanner scanner, long clientTimeStamp, long tableTimeStamp,
                             int clientVersion)
             throws IOException, SQLException {
@@ -1060,6 +1076,11 @@ TABLE_FAMILY_BYTES, TABLE_SEQ_NUM_BYTES);
         PName dataTableName =
                 dataTableNameKv != null ? newPName(dataTableNameKv.getValueArray(),
                         dataTableNameKv.getValueOffset(), dataTableNameKv.getValueLength()) : null;
+        Cell physicalTableNameKv = tableKeyValues[PHYSICAL_TABLE_NAME_INDEX];
+        PName physicalTableName =
+                physicalTableNameKv != null ? newPName(physicalTableNameKv.getValueArray(),
+                        physicalTableNameKv.getValueOffset(), physicalTableNameKv.getValueLength()) : null;
+
         Cell indexStateKv = tableKeyValues[INDEX_STATE_INDEX];
         PIndexState indexState =
                 indexStateKv == null ? null : PIndexState.fromSerializedValue(indexStateKv
@@ -1186,6 +1207,7 @@ TABLE_FAMILY_BYTES, TABLE_SEQ_NUM_BYTES);
         List<PName> physicalTables = Lists.newArrayList();
         PName parentTableName = tableType == INDEX ? dataTableName : null;
         PName parentSchemaName = tableType == INDEX ? schemaName : null;
+        PName parentLogicalName = null;
         EncodedCQCounter cqCounter =
                 (!EncodedColumnsUtil.usesEncodedColumnNames(encodingScheme) || tableType == PTableType.VIEW) ? PTable.EncodedCQCounter.NULL_COUNTER
                         : new EncodedCQCounter();
@@ -1209,7 +1231,40 @@ TABLE_FAMILY_BYTES, TABLE_SEQ_NUM_BYTES);
                 if (linkType == LinkType.INDEX_TABLE) {
                     addIndexToTable(tenantId, schemaName, famName, tableName, clientTimeStamp, indexes, clientVersion);
                 } else if (linkType == LinkType.PHYSICAL_TABLE) {
-                    physicalTables.add(famName);
+                    // famName contains the logical name of the parent table. We need to get the actual physical name of the table
+                    PTable parentTable = null;
+                    if (indexType != IndexType.LOCAL) {
+                        parentTable = getTable(null, SchemaUtil.getSchemaNameFromFullName(famName.getBytes()).getBytes(),
+                                SchemaUtil.getTableNameFromFullName(famName.getBytes()).getBytes(), clientTimeStamp, clientVersion);
+                        if (parentTable == null) {
+                            // parentTable is not in the cache. Since famName is only logical name, we need to find the physical table.
+                            try (PhoenixConnection connection = QueryUtil.getConnectionOnServer(env.getConfiguration()).unwrap(PhoenixConnection.class)) {
+                                parentTable = PhoenixRuntime.getTableNoCache(connection, famName.getString());
+                            } catch (TableNotFoundException e) {
+                                // It is ok to swallow this exception since this could be a view index and _IDX_ table is not there.
+                            }
+                        }
+                    }
+
+                    if (parentTable == null) {
+                        physicalTables.add(famName);
+                        //LOGGER.info("parentTable == null " + String.valueOf(parentSchemaName) + ","+ String.valueOf(parentTableName) + ",fam=" + famName);
+                        // If this is a view index, then one of the link is IDX_VW -> _IDX_ PhysicalTable link. Since famName is _IDX_ and we can't get this table hence it is null, we need to use actual view name
+                        parentLogicalName = (tableType == INDEX ? SchemaUtil.getTableName(parentSchemaName, parentTableName) : famName);
+
+                        parentTableName = PNameFactory.newName(SchemaUtil.getTableNameFromFullName(famName.getBytes()));
+                        parentSchemaName = PNameFactory.newName(SchemaUtil.getSchemaNameFromFullName(famName.getBytes()));
+
+                    } else {
+                        String parentPhysicalTableName = parentTable.getPhysicalName().getString();
+                        physicalTables.add(PNameFactory.newName(parentPhysicalTableName));
+                        //LOGGER.info("parentTable not null " + String.valueOf(parentSchemaName) + ","+ String.valueOf(parentTableName) + ",fam=" + famName + "," + String.valueOf(parentTable.getSchemaName()));
+                        parentLogicalName = SchemaUtil.getTableName(parentTable.getSchemaName(), parentTable.getTableName());
+
+
+                        parentSchemaName=parentTable.getSchemaName();
+                        parentTableName=parentTable.getTableName();
+                    }
                 } else if (linkType == LinkType.PARENT_TABLE) {
                     parentTableName = PNameFactory.newName(SchemaUtil.getTableNameFromFullName(famName.getBytes()));
                     parentSchemaName = PNameFactory.newName(SchemaUtil.getSchemaNameFromFullName(famName.getBytes()));
@@ -1256,6 +1311,7 @@ TABLE_FAMILY_BYTES, TABLE_SEQ_NUM_BYTES);
                 .setTenantId(tenantId)
                 .setSchemaName(schemaName)
                 .setTableName(tableName)
+                .setPhysicalTableName(physicalTableName)
                 .setPkName(pkName)
                 .setDefaultFamilyName(defaultFamilyName)
                 .setRowKeyOrderOptimizable(rowKeyOrderOptimizable)
@@ -1263,6 +1319,8 @@ TABLE_FAMILY_BYTES, TABLE_SEQ_NUM_BYTES);
                 .setIndexes(indexes == null ? Collections.<PTable>emptyList() : indexes)
                 .setParentSchemaName(parentSchemaName)
                 .setParentTableName(parentTableName)
+                //.setParentName(parentLogicalName)
+                //.setParentLogicalName(parentLogicalName)
                 .setPhysicalNames(physicalTables == null ?
                         ImmutableList.<PName>of() : ImmutableList.copyOf(physicalTables))
                 .setViewModifiedUpdateCacheFrequency(viewModifiedUpdateCacheFrequency)
@@ -1877,7 +1935,11 @@ TABLE_FAMILY_BYTES, TABLE_SEQ_NUM_BYTES);
                     cPhysicalName = parentTable.getPhysicalName().getBytes();
                     cParentPhysicalName = parentTable.getPhysicalName().getBytes();
                 } else if (parentTable.getType() == PTableType.VIEW) {
-                    cPhysicalName = MetaDataUtil.getViewIndexPhysicalName(parentTable.getPhysicalName().getBytes());
+                    // Logical name of base table (parentTable is view, parentlogicalname is the logical name of view parent)
+                    //String namepaceMappedParentLogicalName = MetaDataUtil.getNamespaceMappedName(parentTable.getParentLogicalName(), isNamespaceMapped);
+                    String namepaceMappedParentLogicalName = MetaDataUtil.getNamespaceMappedName(
+                            SchemaUtil.getTableName(parentTable.getParentSchemaName(), parentTable.getParentTableName()), isNamespaceMapped);
+                    cPhysicalName = MetaDataUtil.getViewIndexPhysicalName(namepaceMappedParentLogicalName.getBytes());
                     cParentPhysicalName = parentTable.getPhysicalName().getBytes();
                 } else {
                     cParentPhysicalName = SchemaUtil
@@ -2013,7 +2075,7 @@ TABLE_FAMILY_BYTES, TABLE_SEQ_NUM_BYTES);
                     String tenantIdStr = tenantIdBytes.length == 0 ? null : Bytes.toString(tenantIdBytes);
                     try (PhoenixConnection connection = QueryUtil.getConnectionOnServer(env.getConfiguration()).unwrap(PhoenixConnection.class)) {
                         PName physicalName = parentTable.getPhysicalName();
-                        long seqValue = getViewIndexSequenceValue(connection, tenantIdStr, parentTable, physicalName);
+                        long seqValue = getViewIndexSequenceValue(connection, tenantIdStr, parentTable);
                         Put tableHeaderPut = MetaDataUtil.getPutOnlyTableHeaderRow(tableMetadata);
                         NavigableMap<byte[], List<Cell>> familyCellMap = tableHeaderPut.getFamilyCellMap();
                         List<Cell> cells = familyCellMap.get(TABLE_FAMILY_BYTES);
@@ -2152,10 +2214,16 @@ TABLE_FAMILY_BYTES, TABLE_SEQ_NUM_BYTES);
         }
     }
 
-    private long getViewIndexSequenceValue(PhoenixConnection connection, String tenantIdStr, PTable parentTable, PName physicalName) throws SQLException {
+    private long getViewIndexSequenceValue(PhoenixConnection connection, String tenantIdStr, PTable parentTable) throws SQLException {
         int nSequenceSaltBuckets = connection.getQueryServices().getSequenceSaltBuckets();
-
-        SequenceKey key = MetaDataUtil.getViewIndexSequenceKey(tenantIdStr, physicalName,
+        // parentTable is parent of the view index which is the view.
+        // Since parent is the view, the parentTable.getParentLogicalName() returns the logical full name of the base table
+        //PName parentName = parentTable.getParentLogicalName();
+        PName parentName = parentTable.getParentName();
+        if (parentName == null) {
+            parentName = SchemaUtil.getPhysicalHBaseTableName(parentTable.getSchemaName(), parentTable.getTableName(), parentTable.isNamespaceMapped());
+        }
+        SequenceKey key = MetaDataUtil.getViewIndexSequenceKey(tenantIdStr, parentName,
                 nSequenceSaltBuckets, parentTable.isNamespaceMapped());
         // Earlier sequence was created at (SCN-1/LATEST_TIMESTAMP) and incremented at the client max(SCN,dataTable.getTimestamp), but it seems we should
         // use always LATEST_TIMESTAMP to avoid seeing wrong sequence values by different connection having SCN

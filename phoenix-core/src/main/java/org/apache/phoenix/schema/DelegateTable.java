@@ -59,6 +59,9 @@ public class DelegateTable implements PTable {
     }
 
     @Override
+    public PName getPhysicalTableNameColumnInSyscat() { return delegate.getPhysicalTableNameColumnInSyscat(); }
+
+    @Override
     public PName getTenantId() {
         return delegate.getTenantId();
     }
@@ -154,6 +157,11 @@ public class DelegateTable implements PTable {
     @Override
     public PName getParentTableName() {
         return delegate.getParentTableName();
+    }
+
+    @Override
+    public PName getParentLogicalName() {
+        return delegate.getParentLogicalName();
     }
 
     @Override

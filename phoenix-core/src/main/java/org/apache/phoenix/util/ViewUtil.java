@@ -756,6 +756,8 @@ public class ViewUtil {
                 .setAutoPartitionSeqName(parentTable.getAutoPartitionSeqName())
                 .setAppendOnlySchema(parentTable.isAppendOnlySchema())
                 .setBaseColumnCount(baseTableColumnCount)
+                .setParentName(parentTable.getName())
+                //.setParentLogicalName(parentTable.getParentLogicalName())
                 .setTimeStamp(maxTableTimestamp)
                 .setExcludedColumns(ImmutableList.copyOf(excludedColumns))
                 .setUpdateCacheFrequency(updateCacheFreq)

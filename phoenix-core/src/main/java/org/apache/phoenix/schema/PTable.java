@@ -583,6 +583,7 @@ public interface PTable extends PMetaDataEntity {
     PName getName();
     PName getSchemaName();
     PName getTableName();
+    PName getPhysicalTableNameColumnInSyscat();
     PName getTenantId();
 
     /**
@@ -728,6 +729,13 @@ public interface PTable extends PMetaDataEntity {
      * (use @getPhysicalTableName for this case) 
      */
     PName getParentTableName();
+
+    /**
+     * @return the logical name of the parent. In case of the view index, it is the _IDX_+logical name of base table
+     * Ex: For hierarchical views like tableLogicalName --> view1 --> view2, for view2, returns _IDX_+tableLogicalName
+     */
+    PName getParentLogicalName();
+
     /**
      * @return the schema name of the parent view for a view or data table for an index table 
      * or null if this is not a view or index table. Also returns null for view of a data table 
