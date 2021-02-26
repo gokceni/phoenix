@@ -111,6 +111,9 @@ message PTable {
   optional bool viewModifiedPhoenixTTL = 44;
   optional int64 lastDDLTimestamp = 45;
   optional bool changeDetectionEnabled = 46;
+  optional bytes physicalTableNameBytes = 47;
+  optional bool isModifiable = 48;
+  optional bytes parentLogicalNameBytes = 49;
 }
 
 message EncodedCQCounter {

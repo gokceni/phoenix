@@ -583,6 +583,7 @@ public interface PTable extends PMetaDataEntity {
     PName getName();
     PName getSchemaName();
     PName getTableName();
+    PName getPhysicalTableName();
     PName getTenantId();
 
     /**
@@ -728,6 +729,13 @@ public interface PTable extends PMetaDataEntity {
      * (use @getPhysicalTableName for this case) 
      */
     PName getParentTableName();
+
+    /**
+     * @return the full name of the parent view for a view or logical data table for an index table
+     * or null if this is not a view or index table. Also returns null for a view of a data table
+     * (use @getPhysicalName for this case)
+     */
+    PName getParentLogicalName();
     /**
      * @return the schema name of the parent view for a view or data table for an index table 
      * or null if this is not a view or index table. Also returns null for view of a data table 

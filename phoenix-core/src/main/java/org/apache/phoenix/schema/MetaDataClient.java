@@ -71,6 +71,7 @@ import static org.apache.phoenix.jdbc.PhoenixDatabaseMetaData.NUM_ARGS;
 import static org.apache.phoenix.jdbc.PhoenixDatabaseMetaData.ORDINAL_POSITION;
 import static org.apache.phoenix.jdbc.PhoenixDatabaseMetaData.PARENT_TENANT_ID;
 import static org.apache.phoenix.jdbc.PhoenixDatabaseMetaData.PHYSICAL_NAME;
+import static org.apache.phoenix.jdbc.PhoenixDatabaseMetaData.PHYSICAL_TABLE_NAME;
 import static org.apache.phoenix.jdbc.PhoenixDatabaseMetaData.PK_NAME;
 import static org.apache.phoenix.jdbc.PhoenixDatabaseMetaData.RETURN_TYPE;
 import static org.apache.phoenix.jdbc.PhoenixDatabaseMetaData.SALT_BUCKETS;
@@ -326,9 +327,10 @@ public class MetaDataClient {
                     VIEW_INDEX_ID_DATA_TYPE +"," +
                     PHOENIX_TTL +"," +
                     PHOENIX_TTL_HWM + "," +
-                    CHANGE_DETECTION_ENABLED +
+                    CHANGE_DETECTION_ENABLED + "," +
+                    PHYSICAL_TABLE_NAME +
                     ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, " +
-                "?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
     private static final String CREATE_SCHEMA = "UPSERT INTO " + SYSTEM_CATALOG_SCHEMA + ".\"" + SYSTEM_CATALOG_TABLE
             + "\"( " + TABLE_SCHEM + "," + TABLE_NAME + ") VALUES (?,?)";
@@ -890,12 +892,13 @@ public class MetaDataClient {
         // only need to inherit columns and indexes for view indexes and views
         if ( (table.getType()==PTableType.INDEX && hasIndexId)
                 || (table.getType() == PTableType.VIEW && table.getViewType() != ViewType.MAPPED)) {
-            String parentName = table.getParentName().getString();
+            String parentName = table.getParentLogicalName().getString();
             String parentSchemaName = SchemaUtil.getSchemaNameFromFullName(parentName);
             String parentTableName = SchemaUtil.getTableNameFromFullName(parentName);
             MetaDataMutationResult parentResult = updateCache(connection.getTenantId(), parentSchemaName, parentTableName,
                     false, resolvedTimestamp);
             PTable parentTable = parentResult.getTable();
+            LOGGER.info("GOKCEN logical name " + parentName + " parent name " + table.getParentName().getString());
             if (parentResult.getMutationCode() == MutationCode.TABLE_NOT_FOUND || parentTable == null) {
                 // this mean the parent table was dropped and the child views have not yet been
                 // dropped by the TaskRegionObserver
@@ -2247,6 +2250,7 @@ public class MetaDataClient {
                 updateCacheFrequency = updateCacheFrequencyProp;
             }
 
+            String physicalTableName = (String) TableProperty.PHYSICAL_TABLE_NAME.getValue(tableProps);
             String autoPartitionSeq = (String) TableProperty.AUTO_PARTITION_SEQ.getValue(tableProps);
             Long guidePostsWidth = (Long) TableProperty.GUIDE_POSTS_WIDTH.getValue(tableProps);
 
@@ -3034,6 +3038,12 @@ public class MetaDataClient {
                 tableUpsert.setNull(32, Types.BOOLEAN);
             } else {
                 tableUpsert.setBoolean(32, isChangeDetectionEnabledProp);
+            }
+
+            if (physicalTableName == null){
+                tableUpsert.setNull(33, Types.VARCHAR);
+            } else {
+                tableUpsert.setString(33, physicalTableName);
             }
 
             tableUpsert.execute();
@@ -5206,6 +5216,8 @@ public class MetaDataClient {
                         metaProperties.setTransactionProviderProp((TransactionFactory.Provider) value);
                     } else if (propName.equals(UPDATE_CACHE_FREQUENCY)) {
                         metaProperties.setUpdateCacheFrequencyProp((Long)value);
+                    } else if (propName.equals(PHYSICAL_TABLE_NAME)) {
+                        metaProperties.setPhysicalTableNameProp((String) value);
                     } else if (propName.equals(GUIDE_POSTS_WIDTH)) {
                         metaProperties.setGuidePostWidth((Long)value);
                     } else if (propName.equals(APPEND_ONLY_SCHEMA)) {
@@ -5391,6 +5403,7 @@ public class MetaDataClient {
         private TransactionFactory.Provider transactionProviderProp = null;
         private Boolean isTransactionalProp = null;
         private Long updateCacheFrequencyProp = null;
+        private String physicalTableNameProp = null;
         private Boolean appendOnlySchemaProp = null;
         private Long guidePostWidth = -1L;
         private ImmutableStorageScheme immutableStorageSchemeProp = null;
@@ -5445,6 +5458,14 @@ public class MetaDataClient {
 
         public void setIsTransactionalProp(Boolean isTransactionalProp) {
             this.isTransactionalProp = isTransactionalProp;
+        }
+
+        public void setPhysicalTableNameProp(String physicalTableNameProp) {
+            this.physicalTableNameProp = physicalTableNameProp;
+        }
+
+        public String gethysicalTableNameProp() {
+            return this.physicalTableNameProp;
         }
 
         public Long getUpdateCacheFrequencyProp() {
