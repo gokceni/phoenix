@@ -422,7 +422,7 @@ public class SingleCellIndexIT extends ParallelStatsDisabledIT {
         return DriverManager.getConnection(getUrl(), tenantProps);
     }
 
-    private void assertMetadata(Connection conn, PTable.ImmutableStorageScheme expectedStorageScheme, PTable.QualifierEncodingScheme
+    public static void assertMetadata(Connection conn, PTable.ImmutableStorageScheme expectedStorageScheme, PTable.QualifierEncodingScheme
             expectedColumnEncoding, String tableName)
             throws Exception {
         PhoenixConnection phxConn = conn.unwrap(PhoenixConnection.class);
