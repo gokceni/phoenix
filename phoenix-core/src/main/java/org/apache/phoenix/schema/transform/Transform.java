@@ -63,6 +63,7 @@ public class Transform {
         stmt.setString(3, systemTransformParams.getNewPhysicalTableName());
 
         stmt.setByte(4, systemTransformParams.getTransformType().getSerializedValue());
+
         if (systemTransformParams.getLogicalParentName() != null) {
             stmt.setString(5, systemTransformParams.getLogicalParentName());
         } else {
