@@ -561,7 +561,10 @@ public enum SQLExceptionCode {
         "CASCADE INDEX feature is not supported for local index"),
 
     INVALID_REGION_SPLIT_POLICY(908, "43M19",
-        "REGION SPLIT POLICY is incorrect.");
+        "REGION SPLIT POLICY is incorrect."),
+
+    CANNOT_TRANSFORM_ALREADY_TRANSFORMING_TABLE(909, "43M20",
+                                        "Cannot transform an index or a table who is already going through a transform.");
 
     private final int errorCode;
     private final String sqlState;

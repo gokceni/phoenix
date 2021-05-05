@@ -247,6 +247,58 @@ public interface PTable extends PMetaDataEntity {
         },
     }
 
+    public enum TransformType {
+        METADATA_TRANSFORM((byte)1);
+
+        private final byte[] byteValue;
+        private final byte serializedValue;
+
+        TransformType(byte serializedValue) {
+            this.serializedValue = serializedValue;
+            this.byteValue = Bytes.toBytes(this.name());
+        }
+
+        public byte[] getBytes() {
+            return byteValue;
+        }
+
+        public byte getSerializedValue() {
+            return this.serializedValue;
+        }
+        public static TransformType getDefault() {
+            return METADATA_TRANSFORM;
+        }
+        public static TransformType fromSerializedValue(byte serializedValue) {
+            if (serializedValue < 1 || serializedValue > TaskType.values().length) {
+                throw new IllegalArgumentException("Invalid TaskType " + serializedValue);
+            }
+            return TransformType.values()[serializedValue-1];
+        }
+    }
+
+    public enum TransformStatus {
+        CREATED {
+            public String toString() {
+                return  "CREATED";
+            }
+        },
+        STARTED {
+            public String toString() {
+                return  "STARTED";
+            }
+        },
+        COMPLETED {
+            public String toString() {
+                return  "COMPLETED";
+            }
+        },
+        FAILED {
+            public String toString() {
+                return  "FAILED";
+            }
+        },
+    }
+
     public enum ImmutableStorageScheme implements ColumnValueEncoderDecoderSupplier {
         ONE_CELL_PER_COLUMN((byte)1) {
             @Override
