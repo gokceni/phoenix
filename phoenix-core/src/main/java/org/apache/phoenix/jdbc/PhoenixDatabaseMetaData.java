@@ -214,7 +214,7 @@ public class PhoenixDatabaseMetaData implements DatabaseMetaData {
     public static final String TASK_PRIORITY = "TASK_PRIORITY";
     public static final String TASK_DATA = "TASK_DATA";
     public static final String TASK_TABLE_TTL = "864000";
-    public static final String NEW_PHY_TABLE_NAME = "NEW_PHY_TABLE_NAME";
+    public static final String NEW_PHYS_TABLE_NAME = "NEW_PHYS_TABLE_NAME";
     public static final String TRANSFORM_TYPE = "TRANSFORM_TYPE";
     public static final String TRANSFORM_STATUS = "STATUS";
     public static final String TRANSFORM_JOB_ID = "JOB_ID";

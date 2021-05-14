@@ -17,6 +17,7 @@
  */
 package org.apache.phoenix.end2end;
 
+import com.google.common.base.Strings;
 import org.apache.curator.shaded.com.google.common.base.Joiner;
 import org.apache.curator.shaded.com.google.common.collect.Lists;
 import org.apache.curator.shaded.com.google.common.collect.Maps;
@@ -27,6 +28,7 @@ import org.apache.hadoop.hbase.client.HTableInterface;
 import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.regionserver.ScanInfoUtil;
 import org.apache.hadoop.hbase.util.Bytes;
+import org.apache.phoenix.end2end.index.SingleCellIndexIT;
 import org.apache.phoenix.jdbc.PhoenixConnection;
 import org.apache.phoenix.query.BaseTest;
 import org.apache.phoenix.query.PhoenixTestBuilder;
@@ -531,13 +533,13 @@ public class LogicalTableNameBaseIT extends BaseTest {
         String
                 changeName =
                 String.format(
-                        "UPSERT INTO SYSTEM.CATALOG (TENANT_ID, TABLE_SCHEM, TABLE_NAME, COLUMN_NAME, COLUMN_FAMILY, PHYSICAL_TABLE_NAME) VALUES (%s, '%s', '%s', NULL, NULL, '%s')",
-                        tenantId, schema, tableName, physicalName);
+                        "UPSERT INTO SYSTEM.CATALOG (TENANT_ID, TABLE_SCHEM, TABLE_NAME, COLUMN_NAME, COLUMN_FAMILY, PHYSICAL_TABLE_NAME) VALUES (%s, %s, '%s', NULL, NULL, '%s')",
+                        tenantId, schema==null ? null : ("'" + schema + "'"), tableName, physicalName);
         conn.createStatement().execute(changeName);
         conn.commit();
 
         String fullTableName = SchemaUtil.getTableName(schema, tableName);
-        if (isNamespaceEnabled) {
+        if (isNamespaceEnabled && !(Strings.isNullOrEmpty(schema) || "NULL".equals(schema))) {
             fullTableName = schema + NAMESPACE_SEPARATOR + tableName;
         }
         Admin admin = conn.unwrap(PhoenixConnection.class).getQueryServices().getAdmin();

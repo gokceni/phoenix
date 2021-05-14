@@ -400,7 +400,7 @@ public class IndexMaintainer implements Writable, Iterable<ColumnReference> {
     //**** START: New member variables added in 4.16 ****/
     private String logicalIndexName;
 
-    private IndexMaintainer(RowKeySchema dataRowKeySchema, boolean isDataTableSalted) {
+    protected IndexMaintainer(RowKeySchema dataRowKeySchema, boolean isDataTableSalted) {
         this.dataRowKeySchema = dataRowKeySchema;
         this.isDataTableSalted = isDataTableSalted;
     }

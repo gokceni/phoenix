@@ -98,7 +98,7 @@ import static org.apache.phoenix.jdbc.PhoenixDatabaseMetaData.MAX_VALUE;
 import static org.apache.phoenix.jdbc.PhoenixDatabaseMetaData.MIN_VALUE;
 import static org.apache.phoenix.jdbc.PhoenixDatabaseMetaData.MULTI_TENANT;
 import static org.apache.phoenix.jdbc.PhoenixDatabaseMetaData.NEW_METADATA;
-import static org.apache.phoenix.jdbc.PhoenixDatabaseMetaData.NEW_PHY_TABLE_NAME;
+import static org.apache.phoenix.jdbc.PhoenixDatabaseMetaData.NEW_PHYS_TABLE_NAME;
 import static org.apache.phoenix.jdbc.PhoenixDatabaseMetaData.NO_OF_RESULTS_ITERATED;
 import static org.apache.phoenix.jdbc.PhoenixDatabaseMetaData.NULLABLE;
 import static org.apache.phoenix.jdbc.PhoenixDatabaseMetaData.NUM_ARGS;
@@ -542,9 +542,10 @@ public interface QueryConstants {
     String CREATE_TRANSFORM_METADATA = "CREATE TABLE " + SYSTEM_CATALOG_SCHEMA + ".\""
             + SYSTEM_TRANSFORM_TABLE + "\"(\n" +
             // PK columns
+            TENANT_ID + " VARCHAR NULL,\n" +
             TABLE_SCHEM + " VARCHAR NULL," +
             LOGICAL_TABLE_NAME + " VARCHAR NOT NULL,\n" +
-            NEW_PHY_TABLE_NAME + " VARCHAR NOT NULL,\n" +
+            NEW_PHYS_TABLE_NAME + " VARCHAR NOT NULL,\n" +
             TRANSFORM_TYPE + " UNSIGNED_TINYINT NOT NULL," +
             // Non-PK columns
             LOGICAL_PARENT_NAME + " VARCHAR NULL,\n" + // If this is an index, Logical_Parent_Name is the data table name. Index name is not unique.
@@ -557,7 +558,7 @@ public interface QueryConstants {
             NEW_METADATA + " VARCHAR NULL,\n" +
             TRANSFORM_FUNCTION + " VARCHAR NULL\n" +
             "CONSTRAINT " + SYSTEM_TABLE_PK_NAME + " PRIMARY KEY (" +
-            TABLE_SCHEM + "," + LOGICAL_TABLE_NAME + "," + NEW_PHY_TABLE_NAME + "," + TRANSFORM_TYPE + "))\n" +
+            TENANT_ID + "," + TABLE_SCHEM + "," + LOGICAL_TABLE_NAME + "," + NEW_PHYS_TABLE_NAME + "," + TRANSFORM_TYPE + "))\n" +
             HConstants.VERSIONS + "=%s,\n" +
             HColumnDescriptor.KEEP_DELETED_CELLS + "=%s,\n" +
             HColumnDescriptor.TTL + "=" + TRANSFORM_TABLE_TTL + ",\n" +     // 10 days
@@ -565,4 +566,5 @@ public interface QueryConstants {
             + SystemTaskSplitPolicy.class.getName() + "',\n" +
             TRANSACTIONAL + "=" + Boolean.FALSE + ",\n" +
             STORE_NULLS + "=" + Boolean.TRUE;
+
 }

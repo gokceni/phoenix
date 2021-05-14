@@ -79,7 +79,7 @@ public class SingleCellColumnExpression extends KeyValueColumnExpression {
         Preconditions.checkNotNull(encodingScheme);
         Preconditions.checkArgument(encodingScheme != NON_ENCODED_QUALIFIERS);
         this.arrayColDisplayName = displayName;
-        this.decodedColumnQualifier = encodingScheme.decode(column.getColumnQualifierBytes());
+        this.decodedColumnQualifier = encodingScheme.getMaxQualifier();
         this.encodingScheme = encodingScheme;
         setKeyValueExpression();
     }

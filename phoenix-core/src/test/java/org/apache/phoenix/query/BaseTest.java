@@ -2045,10 +2045,10 @@ public abstract class BaseTest {
      * @return true if any region has refCount leakage
      */
     protected synchronized static boolean isAnyStoreRefCountLeaked() {
-        if (getUtility() != null) {
-            return CompatUtil.isAnyStoreRefCountLeaked(getUtility()
-                .getHBaseCluster().getMaster());
-        }
+//        if (getUtility() != null) {
+//            return CompatUtil.isAnyStoreRefCountLeaked(getUtility()
+//                .getHBaseCluster().getMaster());
+//        }
         return false;
     }
 }

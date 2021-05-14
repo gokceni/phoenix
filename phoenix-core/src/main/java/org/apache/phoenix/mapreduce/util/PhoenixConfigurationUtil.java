@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 
+import com.sun.org.apache.xpath.internal.operations.Bool;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.HConstants;
@@ -102,7 +103,7 @@ public final class PhoenixConfigurationUtil {
     public static final String INPUT_CLASS = "phoenix.input.class";
     
     public static final String CURRENT_SCN_VALUE = "phoenix.mr.currentscn.value";
-    
+
     public static final String TX_SCN_VALUE = "phoenix.mr.txscn.value";
     
     public static final String TX_PROVIDER = "phoenix.mr.txprovider";
@@ -195,6 +196,14 @@ public final class PhoenixConfigurationUtil {
 
     // by default MR snapshot restore is handled internally by phoenix
     public static final boolean DEFAULT_MAPREDUCE_EXTERNAL_SNAPSHOT_RESTORE = false;
+
+    // Is the mapreduce used for table/index transform
+    public static final String IS_TRANSFORMING_VALUE = "phoenix.mr.istransforming";
+
+    // Is the mapreduce used for table/index transform
+    public static final String TRANSFORMING_TABLE_TYPE = "phoenix.mr.transform.tabletype";
+
+    public static final String IS_PARTIAL_TRANSFORM = "phoenix.mr.transform.ispartial";
 
     /**
      * Determines type of Phoenix Map Reduce job.
@@ -328,6 +337,29 @@ public final class PhoenixConfigurationUtil {
         configuration.set(CURRENT_SCN_VALUE, Long.toString(scn));
     }
 
+    public static void setIsTransforming(Configuration configuration, Boolean isTransforming) {
+        Preconditions.checkNotNull(configuration);
+        Preconditions.checkNotNull(isTransforming);
+        configuration.set(IS_TRANSFORMING_VALUE, Boolean.toString(isTransforming));
+    }
+
+    public static Boolean getIsTransforming(Configuration configuration) {
+        Preconditions.checkNotNull(configuration);
+        return Boolean.valueOf(configuration.get(IS_TRANSFORMING_VALUE, "false"));
+    }
+
+    public static void setTransformingTableType(Configuration configuration,
+                                              SourceTable sourceTable) {
+        Preconditions.checkNotNull(configuration);
+        Preconditions.checkNotNull(sourceTable);
+        configuration.set(TRANSFORMING_TABLE_TYPE, sourceTable.name());
+    }
+
+    public static SourceTable getTransformingTableType(Configuration configuration) {
+        Preconditions.checkNotNull(configuration);
+        return SourceTable.valueOf(configuration.get(TRANSFORMING_TABLE_TYPE));
+    }
+
     public static String getIndexToolStartTime(Configuration configuration) {
         Preconditions.checkNotNull(configuration);
         return configuration.get(INDEX_TOOL_START_TIME);
@@ -444,6 +476,13 @@ public final class PhoenixConfigurationUtil {
         configuration.set(UPSERT_STATEMENT, upsertStmt);
     }
 
+    public static void setIsPartialTransform(final Configuration configuration, Boolean partialTransform) throws SQLException {
+        Preconditions.checkNotNull(configuration);
+        Preconditions.checkNotNull(partialTransform);
+        configuration.set(IS_PARTIAL_TRANSFORM, String.valueOf(partialTransform));
+    }
+
+
     public static void setMultiInputMapperSplitSize(Configuration configuration, final int splitSize) {
         Preconditions.checkNotNull(configuration);
         configuration.set(MAPREDUCE_MULTI_INPUT_MAPPER_SPLIT_SIZE, String.valueOf(splitSize));
@@ -529,7 +568,12 @@ public final class PhoenixConfigurationUtil {
         configuration.setLong(UPSERT_BATCH_SIZE, batchSize);
         return batchSize;
     }
-    
+
+    public static boolean getIsPartialTransform(final Configuration configuration)  {
+        Preconditions.checkNotNull(configuration);
+        return configuration.getBoolean(IS_PARTIAL_TRANSFORM, false);
+    }
+
     public static int getSelectColumnsCount(Configuration configuration,
             String tableName) throws SQLException {
         Preconditions.checkNotNull(configuration);

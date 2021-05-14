@@ -18,7 +18,9 @@
 
 package org.apache.phoenix.schema.transform;
 
+import com.google.common.base.Strings;
 import org.apache.phoenix.schema.PTable;
+import org.apache.phoenix.util.EnvironmentEdgeManager;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -30,12 +32,13 @@ import java.sql.Timestamp;
  * upsert mutations plan in {@link Transform} class
  */
 @edu.umd.cs.findbugs.annotations.SuppressWarnings(
-    value = {"EI_EXPOSE_REP", "EI_EXPOSE_REP2"},
-    justification = "endTs and startTs are not used for mutation")
+        value = {"EI_EXPOSE_REP", "EI_EXPOSE_REP2"},
+        justification = "endTs and startTs are not used for mutation")
 public class SystemTransformRecord {
     private final PTable.TransformType transformType;
     private final String schemaName;
     private final String logicalTableName;
+    private final String tenantId;
     private final String logicalParentName;
     private final String newPhysicalTableName;
     private final String transformStatus;
@@ -48,11 +51,12 @@ public class SystemTransformRecord {
     private final String transformFunction;
 
     public SystemTransformRecord(PTable.TransformType transformType,
-                                 String schemaName, String logicalTableName, String newPhysicalTableName, String logicalParentName,
+                                 String schemaName, String logicalTableName, String tenantId, String newPhysicalTableName, String logicalParentName,
                                  String transformStatus, String transformJobId, Integer transformRetryCount, Timestamp startTs,
                                  Timestamp endTs, String oldMetadata, String newMetadata, String transformFunction) {
         this.transformType = transformType;
         this.schemaName = schemaName;
+        this.tenantId = tenantId;
         this.logicalTableName = logicalTableName;
         this.newPhysicalTableName = newPhysicalTableName;
         this.logicalParentName = logicalParentName;
@@ -80,6 +84,10 @@ public class SystemTransformRecord {
         return schemaName;
     }
 
+    public String getTenantId() {
+        return tenantId;
+    }
+
     public String getLogicalTableName() {
         return logicalTableName;
     }
@@ -100,7 +108,7 @@ public class SystemTransformRecord {
         return transformJobId;
     }
 
-    public Integer getTransformRetryCount() {
+    public int getTransformRetryCount() {
         return transformRetryCount;
     }
 
@@ -120,24 +128,51 @@ public class SystemTransformRecord {
     }
     public String getTransformFunction() { return transformFunction; }
 
+    public boolean isActive() {
+        return (transformStatus.equals(PTable.TransformStatus.STARTED.name())
+                || transformStatus.equals(PTable.TransformStatus.CREATED.name()));
+    }
+
     @edu.umd.cs.findbugs.annotations.SuppressWarnings(
-        value = {"EI_EXPOSE_REP", "EI_EXPOSE_REP2"},
-        justification = "endTs and startTs are not used for mutation")
+            value = {"EI_EXPOSE_REP", "EI_EXPOSE_REP2"},
+            justification = "endTs and startTs are not used for mutation")
     public static class SystemTransformBuilder {
 
         private PTable.TransformType transformType;
         private String schemaName;
+        private String tenantId;
         private String logicalTableName;
         private String logicalParentName;
         private String newPhysicalTableName;
-        private String transformStatus;
+        private String transformStatus = PTable.TransformStatus.CREATED.name();
         private String transformJobId;
-        private Integer transformRetryCount;
-        private Timestamp startTs;
+        private int transformRetryCount =0;
+        private Timestamp startTs = new Timestamp(EnvironmentEdgeManager.currentTimeMillis());
         private Timestamp endTs;
         private String oldMetadata;
         private String newMetadata;
         private String transformFunction;
+
+        public SystemTransformBuilder() {
+
+        }
+
+        public SystemTransformBuilder(SystemTransformRecord systemTransformRecord) {
+            this.setTransformType(systemTransformRecord.getTransformType());
+            this.setTenantId(systemTransformRecord.getTenantId());
+            this.setSchemaName(systemTransformRecord.getSchemaName());
+            this.setLogicalTableName(systemTransformRecord.getLogicalTableName());
+            this.setNewPhysicalTableName(systemTransformRecord.getNewPhysicalTableName());
+            this.setLogicalParentName(systemTransformRecord.getLogicalParentName());
+            this.setTransformStatus(systemTransformRecord.getTransformStatus());
+            this.setTransformJobId(systemTransformRecord.getTransformJobId());
+            this.setTransformRetryCount(systemTransformRecord.getTransformRetryCount());
+            this.setStartTs(systemTransformRecord.getTransformStartTs());
+            this.setEndTs(systemTransformRecord.getTransformEndTs());
+            this.setOldMetadata(systemTransformRecord.getOldMetadata());
+            this.setNewMetadata(systemTransformRecord.getNewMetadata());
+            this.setTransformFunction(systemTransformRecord.getTransformFunction());
+        }
 
         public SystemTransformBuilder setTransformType(PTable.TransformType transformType) {
             this.transformType = transformType;
@@ -151,6 +186,11 @@ public class SystemTransformRecord {
 
         public SystemTransformBuilder setLogicalTableName(String tableName) {
             this.logicalTableName = tableName;
+            return this;
+        }
+
+        public SystemTransformBuilder setTenantId(String tenant) {
+            this.tenantId = tenant;
             return this;
         }
 
@@ -184,7 +224,7 @@ public class SystemTransformRecord {
             return this;
         }
 
-        public SystemTransformBuilder setTransformRetryCount(Integer transformRetryCount) {
+        public SystemTransformBuilder setTransformRetryCount(int transformRetryCount) {
             this.transformRetryCount = transformRetryCount;
             return this;
         }
@@ -205,14 +245,19 @@ public class SystemTransformRecord {
         }
 
         public SystemTransformRecord build() {
+            Timestamp end = endTs;
+            if (end == null && transformStatus != null && transformStatus.equals(PTable.TaskStatus.COMPLETED.toString())) {
+                end = new Timestamp(EnvironmentEdgeManager.currentTimeMillis());
+            }
             return new SystemTransformRecord(transformType, schemaName,
-                logicalTableName, newPhysicalTableName, logicalParentName, transformStatus, transformJobId, transformRetryCount, startTs, endTs,
-                oldMetadata, newMetadata, transformFunction);
+                    logicalTableName, tenantId, newPhysicalTableName, logicalParentName, transformStatus, transformJobId, transformRetryCount, startTs, end,
+                    oldMetadata, newMetadata, transformFunction);
         }
 
         public static SystemTransformRecord build(ResultSet resultSet) throws SQLException {
             int col = 1;
             SystemTransformBuilder builder = new SystemTransformBuilder();
+            builder.setTenantId(resultSet.getString(col++));
             builder.setSchemaName(resultSet.getString(col++));
             builder.setLogicalTableName(resultSet.getString(col++));
             builder.setNewPhysicalTableName(resultSet.getString(col++));

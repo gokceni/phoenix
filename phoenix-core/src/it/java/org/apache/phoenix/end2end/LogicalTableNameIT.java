@@ -73,8 +73,9 @@ public class LogicalTableNameIT extends LogicalTableNameBaseIT {
         this.createChildAfterRename = createChildAfterRename;
         this.immutable = immutable;
         StringBuilder optionBuilder = new StringBuilder();
+        optionBuilder.append(" ,IMMUTABLE_STORAGE_SCHEME=ONE_CELL_PER_COLUMN");
         if (immutable) {
-            optionBuilder.append(" ,IMMUTABLE_STORAGE_SCHEME=ONE_CELL_PER_COLUMN, IMMUTABLE_ROWS=true");
+            optionBuilder.append(" , IMMUTABLE_ROWS=true");
         }
         this.dataTableDdl = optionBuilder.toString();
     }
@@ -191,7 +192,7 @@ public class LogicalTableNameIT extends LogicalTableNameBaseIT {
                 if (createChildAfterRename) {
                     createIndexOnTable(conn2, fullTableName, indexName2);
                 }
-                dropIndex(conn2, fullTableName, indexName);
+                dropIndex(conn, fullTableName, indexName);
                 if (!createChildAfterRename) {
                     createIndexOnTable(conn2, fullTableName, indexName2);
                 }
@@ -199,6 +200,7 @@ public class LogicalTableNameIT extends LogicalTableNameBaseIT {
                 expected.remove("PK3");
                 validateIndex(conn, fullIndexName2, false, expected);
                 validateIndex(conn2, fullIndexName2, false, expected);
+
             }
         }
     }

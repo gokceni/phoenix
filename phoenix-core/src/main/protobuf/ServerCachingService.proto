@@ -70,6 +70,31 @@ message IndexMaintainer {
   optional int32 dataImmutableStorageScheme = 27;
 }
 
+message TransformMaintainer {
+  required int32 saltBuckets = 1;
+  required bool isMultiTenant = 2;
+  repeated ColumnReference newTableColumns = 3;
+  repeated ColumnReference oldTableColRefForCoveredColumns = 4;
+  repeated ColumnReference newTableColRefForCoveredColumns = 5;
+  required bytes newTableName = 6;
+  required bool newTableRowKeyOrderOptimizable = 8;
+  required bytes oldTableEmptyKeyValueColFamily = 9;
+  required ImmutableBytesWritable emptyKeyValueColFamily = 10;
+  optional bytes newTableExpressions = 11;
+  required int32 numDataTableColFamilies = 12;
+  required bool newTableWalDisabled = 13;
+  required int32 newTableRowKeyByteSize = 14;
+  required bool newTableImmutable = 15;
+  repeated ColumnInfo newTableColumnInfo = 16;
+  required int32 newTableEncodingScheme = 17;
+  required int32 newTableImmutableStorageScheme = 18;
+  optional int32 newTableColumnCount = 19 [default = -1];
+  optional string parentTableType = 20;
+  optional string logicalNewTableName = 21;
+  optional int32 oldTableEncodingScheme = 22;
+  optional int32 oldTableImmutableStorageScheme = 23;
+}
+
 message AddServerCacheRequest {
   optional bytes tenantId = 1;
   required bytes cacheId = 2;

@@ -22,6 +22,7 @@ import org.apache.hadoop.hbase.client.HBaseAdmin;
 import org.apache.hadoop.hbase.client.HTableInterface;
 import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.util.Bytes;
+import org.apache.phoenix.end2end.index.SingleCellIndexIT;
 import org.apache.phoenix.hbase.index.IndexRegionObserver;
 import org.apache.phoenix.jdbc.PhoenixConnection;
 import org.apache.phoenix.query.QueryConstants;
@@ -29,6 +30,7 @@ import org.apache.phoenix.query.QueryServices;
 import org.apache.phoenix.schema.types.PInteger;
 import org.apache.phoenix.util.ByteUtil;
 import org.apache.phoenix.util.PropertiesUtil;
+import org.apache.phoenix.util.QueryUtil;
 import org.apache.phoenix.util.SchemaUtil;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -53,6 +55,9 @@ public class LogicalTableNameExtendedIT extends LogicalTableNameBaseIT {
     }
 
     public LogicalTableNameExtendedIT()  {
+        StringBuilder optionBuilder = new StringBuilder();
+        optionBuilder.append(" ,IMMUTABLE_STORAGE_SCHEME=ONE_CELL_PER_COLUMN");
+        this.dataTableDdl = optionBuilder.toString();
         propsNamespace.setProperty(QueryServices.IS_NAMESPACE_MAPPING_ENABLED, Boolean.toString(true));
     }
 
@@ -200,6 +205,38 @@ public class LogicalTableNameExtendedIT extends LogicalTableNameBaseIT {
         }
         testGlobalViewAndTenantView(false, true);
         testGlobalViewAndTenantView(true, true);
+    }
+
+    @Test
+    public void testHint() throws Exception {
+        String tableName = "TBL_" + generateUniqueName();
+        String indexName = "IDX_" + generateUniqueName();
+        String indexName2 = "IDX2_" + generateUniqueName();
+        try (Connection conn = getConnection(propsNamespace)) {
+            conn.setAutoCommit(true);
+            createTable(conn, tableName);
+            createIndexOnTable(conn, tableName, indexName);
+            createIndexOnTable(conn, tableName, indexName2);
+            populateTable(conn, tableName, 1, 2);
+
+            // Test hint
+            String tableSelect = "SELECT V1,V2,V3 FROM " + tableName;
+            ResultSet rs = conn.createStatement().executeQuery("EXPLAIN " + tableSelect);
+            assertEquals(true, QueryUtil.getExplainPlan(rs).contains(indexName));
+            try (HBaseAdmin admin = conn.unwrap(PhoenixConnection.class).getQueryServices()
+                    .getAdmin()) {
+                String snapshotName = new StringBuilder(indexName2).append("-Snapshot").toString();
+                admin.snapshot(snapshotName, TableName.valueOf(indexName2));
+                String newName = "NEW_" + indexName2;
+                admin.cloneSnapshot(Bytes.toBytes(snapshotName), Bytes.toBytes(newName));
+                renameAndDropPhysicalTable(conn, "NULL", null, indexName2, newName, true);
+            }
+            String indexSelect = "SELECT /*+ INDEX(" + tableName + " " + indexName2 + ")*/ V1,V2,V3 FROM " + tableName;
+            rs = conn.createStatement().executeQuery("EXPLAIN " + indexSelect);
+            assertEquals(true, QueryUtil.getExplainPlan(rs).contains(indexName2));
+            rs = conn.createStatement().executeQuery(indexSelect);
+            assertEquals(true, rs.next());
+        }
     }
 
     @Test

@@ -17,11 +17,15 @@
  */
 package org.apache.phoenix.end2end.index;
 
+import com.google.common.base.Strings;
+import org.apache.commons.math3.analysis.function.Sin;
 import org.apache.phoenix.end2end.ParallelStatsDisabledIT;
+import org.apache.phoenix.exception.SQLExceptionCode;
 import org.apache.phoenix.jdbc.PhoenixDatabaseMetaData;
 import org.apache.phoenix.query.QueryServices;
 import org.apache.phoenix.schema.PTable;
 import org.apache.phoenix.util.PropertiesUtil;
+import org.junit.Before;
 import org.junit.Test;
 
 import java.sql.Connection;
@@ -32,9 +36,12 @@ import java.util.Properties;
 
 import static org.apache.phoenix.end2end.index.SingleCellIndexIT.assertMetadata;
 import static org.apache.phoenix.schema.PTable.ImmutableStorageScheme.ONE_CELL_PER_COLUMN;
+import static org.apache.phoenix.schema.PTable.ImmutableStorageScheme.SINGLE_CELL_ARRAY_WITH_OFFSETS;
 import static org.apache.phoenix.schema.PTable.QualifierEncodingScheme.NON_ENCODED_QUALIFIERS;
+import static org.apache.phoenix.schema.PTable.QualifierEncodingScheme.TWO_BYTE_QUALIFIERS;
 import static org.apache.phoenix.util.TestUtil.TEST_PROPERTIES;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -43,6 +50,14 @@ public class TransformIT extends ParallelStatsDisabledIT {
 
     public TransformIT() {
         testProps.put(QueryServices.DEFAULT_COLUMN_ENCODED_BYTES_ATRRIB, "0");
+    }
+
+    @Before
+    public void setupTest() throws Exception {
+        try (Connection conn = DriverManager.getConnection(getUrl(), testProps)) {
+            conn.setAutoCommit(true);
+            conn.createStatement().execute("DELETE FROM " + PhoenixDatabaseMetaData.SYSTEM_TRANSFORM_NAME);
+        }
     }
 
     @Test
@@ -61,30 +76,51 @@ public class TransformIT extends ParallelStatsDisabledIT {
             assertMetadata(conn, ONE_CELL_PER_COLUMN, NON_ENCODED_QUALIFIERS, tableName);
             assertMetadata(conn, ONE_CELL_PER_COLUMN, NON_ENCODED_QUALIFIERS, idxName);
 
-            assertSystemTransform(conn, 0, null, idxName);
+            assertSystemTransform(conn, 0, null, idxName, null);
 
             // Do an alter that doesn't require transform
             conn.createStatement().execute("ALTER INDEX " + idxName + " ON " + tableName + " ACTIVE ");
-            assertSystemTransform(conn, 0, null, idxName);
+            assertSystemTransform(conn, 0, null, idxName, null);
 
             // Now do a transform alter and check
             conn.createStatement().execute("ALTER INDEX " + idxName + " ON " + tableName + " ACTIVE "
                     + " IMMUTABLE_STORAGE_SCHEME=SINGLE_CELL_ARRAY_WITH_OFFSETS, COLUMN_ENCODED_BYTES=2");
-            assertSystemTransform(conn, 1, null, idxName);
+            assertSystemTransform(conn, 1, null, idxName, null);
+            // New table must have been created. Check that we can query it
+            ResultSet rs = conn.createStatement().executeQuery("SELECT /*+ NO_INDEX */ count(*) FROM "+
+                    idxName + "_1");
+            assertTrue(rs.next());
 
             // Now do another alter and fail
-            conn.createStatement().execute("ALTER INDEX " + idxName + " ON " + tableName + " ACTIVE "
-                    + " IMMUTABLE_STORAGE_SCHEME=SINGLE_CELL_ARRAY_WITH_OFFSETS, COLUMN_ENCODED_BYTES=2");
-            assertSystemTransform(conn, 1, null, idxName);
+            try {
+                SingleCellIndexIT.dumpTable("SYSTEM.TRANSFORM");
+                conn.createStatement().execute("ALTER INDEX " + idxName + " ON " + tableName + " ACTIVE "
+                        + " IMMUTABLE_STORAGE_SCHEME=SINGLE_CELL_ARRAY_WITH_OFFSETS, COLUMN_ENCODED_BYTES=2");
+                fail("This transform needs to fail");
+            } catch (SQLException ex) {
+                assertEquals( SQLExceptionCode.CANNOT_TRANSFORM_ALREADY_TRANSFORMING_TABLE.getErrorCode(), ex.getErrorCode());
+            }
 
             // Create another index and transform that one
             String idxName2 = "IND2_" + generateUniqueName();
             conn.createStatement().execute("CREATE INDEX " + idxName2 + " ON " + tableName + " (V2) include (V1) ");
-
             conn.createStatement().execute("ALTER INDEX " + idxName2 + " ON " + tableName + " ACTIVE "
                     + " IMMUTABLE_STORAGE_SCHEME=SINGLE_CELL_ARRAY_WITH_OFFSETS, COLUMN_ENCODED_BYTES=2");
-            assertSystemTransform(conn, 2, null, idxName2);
+            assertSystemTransform(conn, 2, null, idxName2, null);
 
+            rs = conn.createStatement().executeQuery("SELECT /*+ NO_INDEX */ count(*) FROM "+
+                    idxName2 + "_1");
+            assertTrue(rs.next());
+
+            // Test the table naming by removing the transform and redoing
+            conn.createStatement().execute("DELETE FROM " + PhoenixDatabaseMetaData.SYSTEM_TRANSFORM_NAME + " WHERE LOGICAL_TABLE_NAME='"
+            + idxName2 + "'");
+            conn.createStatement().execute("ALTER INDEX " + idxName2 + " ON " + tableName + " ACTIVE "
+                    + " IMMUTABLE_STORAGE_SCHEME=SINGLE_CELL_ARRAY_WITH_OFFSETS, COLUMN_ENCODED_BYTES=2");
+            rs = conn.createStatement().executeQuery("SELECT /*+ NO_INDEX */ count(*) FROM "+
+                    idxName2 + "_2");
+            assertTrue(rs.next());
+            assertMetadata(conn, SINGLE_CELL_ARRAY_WITH_OFFSETS, TWO_BYTE_QUALIFIERS, idxName2 + "_2");
         }
     }
 
@@ -100,11 +136,11 @@ public class TransformIT extends ParallelStatsDisabledIT {
 
             assertMetadata(conn, ONE_CELL_PER_COLUMN, NON_ENCODED_QUALIFIERS, tableName);
 
-            assertSystemTransform(conn, 0, null, tableName);
+            assertSystemTransform(conn, 0, null, tableName, null);
 
             // Do an alter that doesn't require transform
             conn.createStatement().execute("ALTER TABLE " + tableName + " SET TTL=300");
-            assertSystemTransform(conn, 0, null, tableName);
+            assertSystemTransform(conn, 0, null, tableName, null);
 
             try {
                 // Incorrectly set
@@ -126,27 +162,49 @@ public class TransformIT extends ParallelStatsDisabledIT {
             // Now do a transform alter and check
             conn.createStatement().execute("ALTER TABLE " + tableName + " SET "
                     + " IMMUTABLE_STORAGE_SCHEME=SINGLE_CELL_ARRAY_WITH_OFFSETS, COLUMN_ENCODED_BYTES=2");
-            assertSystemTransform(conn, 1, null, tableName);
 
+            assertSystemTransform(conn, 1, null, tableName, null);
+            // New table must have been created. Check that we can query it
+            ResultSet rs = conn.createStatement().executeQuery("SELECT /*+ NO_INDEX */ count(*) FROM "+
+                    tableName + "_1");
+            assertTrue(rs.next());
+            assertMetadata(conn, SINGLE_CELL_ARRAY_WITH_OFFSETS, TWO_BYTE_QUALIFIERS, tableName + "_1");
             // Now do another alter and fail
-            conn.createStatement().execute("ALTER TABLE " + tableName + " SET "
-                    + " IMMUTABLE_STORAGE_SCHEME=SINGLE_CELL_ARRAY_WITH_OFFSETS, COLUMN_ENCODED_BYTES=2");
-            assertSystemTransform(conn, 1, null, tableName);
+            try {
+                conn.createStatement().execute("ALTER TABLE " + tableName + " SET "
+                        + " IMMUTABLE_STORAGE_SCHEME=SINGLE_CELL_ARRAY_WITH_OFFSETS, COLUMN_ENCODED_BYTES=2");
+                fail("Transform should fail");
+            } catch (SQLException ex) {
+                assertEquals( SQLExceptionCode.CANNOT_TRANSFORM_ALREADY_TRANSFORMING_TABLE.getErrorCode(), ex.getErrorCode());
+            }
+            assertSystemTransform(conn, 1, null, tableName, null);
+
+            String tableName2 = "TBL_" + generateUniqueName();
+
+            createTableSql = "CREATE TABLE " + tableName2 + " (PK1 VARCHAR NOT NULL, INT_PK INTEGER NOT NULL, " +
+                    "V1 VARCHAR, V2 INTEGER, V3 INTEGER, V4 VARCHAR, V5 VARCHAR CONSTRAINT NAME_PK PRIMARY KEY(PK1, INT_PK)) ";
+            conn.createStatement().execute(createTableSql);
+            conn.createStatement().execute("ALTER TABLE " + tableName2 + " SET COLUMN_ENCODED_BYTES=4");
+            assertSystemTransform(conn, 2, null, tableName2, null);
         }
     }
 
-    private void assertSystemTransform(Connection conn, int rowCount, String schema, String logicalTableName) throws SQLException {
+    private void assertSystemTransform(Connection conn, int rowCount, String schema, String logicalTableName, String tenantId) throws SQLException {
         ResultSet rs = conn.createStatement().executeQuery("SELECT /*+ NO_INDEX */ count(*) FROM "+
                 PhoenixDatabaseMetaData.SYSTEM_TRANSFORM_NAME);
         assertTrue(rs.next());
-        assertEquals(rs.getInt(1), rowCount);
+        assertEquals(rowCount, rs.getInt(1));
 
         if (rowCount > 0) {
             rs = conn.createStatement().executeQuery("SELECT TABLE_SCHEM, TRANSFORM_TYPE FROM " + PhoenixDatabaseMetaData.SYSTEM_TRANSFORM_NAME
-                    + " WHERE LOGICAL_TABLE_NAME='" + logicalTableName + "'");
+                    + " WHERE LOGICAL_TABLE_NAME='" + logicalTableName + "'"
+                    + (Strings.isNullOrEmpty(schema)? "" : " AND TABLE_SCHEM='"+ schema + "' ")
+                    + (Strings.isNullOrEmpty(tenantId)? "" : " AND TENANT_ID='"+ tenantId + "' ")
+            );
             assertTrue(rs.next());
             assertEquals(schema, rs.getString(1));
             assertEquals(PTable.TransformType.METADATA_TRANSFORM.getSerializedValue(), rs.getByte(2));
+            assertFalse(rs.next());
         }
     }
 }

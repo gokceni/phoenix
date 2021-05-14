@@ -186,8 +186,8 @@ public class SystemTablesCreationOnConnectionIT {
                         testUtil.getHBaseCluster().getMaster() != null;
                 boolean refCountLeaked = false;
                 if (isMasterAvailable) {
-                    refCountLeaked = CompatUtil.isAnyStoreRefCountLeaked(
-                            testUtil.getHBaseCluster().getMaster());
+//                    refCountLeaked = CompatUtil.isAnyStoreRefCountLeaked(
+//                            testUtil.getHBaseCluster().getMaster());
                 }
                 testUtil.shutdownMiniCluster();
                 testUtil = null;

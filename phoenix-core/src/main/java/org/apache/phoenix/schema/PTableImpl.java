@@ -98,6 +98,7 @@ import org.apache.phoenix.parse.SQLParser;
 import org.apache.phoenix.protobuf.ProtobufUtil;
 import org.apache.phoenix.query.QueryConstants;
 import org.apache.phoenix.schema.RowKeySchema.RowKeySchemaBuilder;
+import org.apache.phoenix.schema.transform.TransformMaintainer;
 import org.apache.phoenix.schema.types.PBinary;
 import org.apache.phoenix.schema.types.PChar;
 import org.apache.phoenix.schema.types.PDataType;
@@ -139,6 +140,7 @@ public class PTableImpl implements PTable {
     private static final int VIEW_MODIFIED_PHOENIX_TTL_BIT_SET_POS = 2;
 
     private IndexMaintainer indexMaintainer;
+    private TransformMaintainer transformMaintainer;
     private ImmutableBytesWritable indexMaintainersPtr;
 
     private final PTableKey key;
@@ -1611,6 +1613,14 @@ public class PTableImpl implements PTable {
             indexMaintainer = IndexMaintainer.create(dataTable, this, connection);
         }
         return indexMaintainer;
+    }
+
+    @Override
+    public synchronized TransformMaintainer getTransformMaintainer(PTable oldTable, PhoenixConnection connection) {
+        if (transformMaintainer == null) {
+            transformMaintainer = TransformMaintainer.create(oldTable, this, connection);
+        }
+        return transformMaintainer;
     }
 
     @Override
